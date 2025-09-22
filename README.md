@@ -4,10 +4,16 @@ Repo for data cleaning and handling along with diversity metrics calculation for
 ## Description
 
 This repository shows how data handling and cleaning was performed for raw OTU data from culture samples retrieved from fecal sample of patients undergoing ICI treatment for melanoma.
+Not for commercial use, its just an example.
 
 ## How does it run
 
+Python files needs to be run first.
+
 Data was retrieved from the output of https://github.com/ctmrbio/stag-mwc.
+`pipeline.ipynb` runs all the scripts specified by configs file.
+
+The path for all file imports needs to be modified as I'm just uploading the path I used.
 
 ## Workflow
 Below is how the entire workflow should run:
