@@ -1,0 +1,404 @@
+---
+title: "differential_testing"
+output: html_document
+---
+
+Import library
+
+```{r}
+
+rm(list = ls())
+
+install.packages("BiocManager")
+install.packages("ggrepel")
+
+BiocManager::install("Maaslin2")
+
+library(Maaslin2)
+
+# Data Handling
+library(tibble)
+library(readr)
+library(dplyr)
+library(forcats)
+library(tidyr)
+
+# Plotting
+library(ggplot2)
+library(ggrepel)
+library(pheatmap)
+library(RColorBrewer)
+
+```
+
+Import dataset
+
+```{r}
+# Reading in OTU table
+V107_otu = read.csv("data/V107_otu.csv")
+E975_otu = read.csv("data/E975_otu.csv")
+
+# Reading in metadata
+V107_metadata = read.csv("data/V107_metadata.csv")
+E975_metadata = read.csv("data/E975_metadata.csv")
+
+```
+
+Data preparation for MaAsLin2
+
+```{r}
+# Setting rownames
+V107_otu = column_to_rownames(V107_otu, var = "sample_id")
+E975_otu = column_to_rownames(E975_otu, var = "sample_id")
+
+V107_metadata = column_to_rownames(V107_metadata, var = "sample_id")
+E975_metadata = column_to_rownames(E975_metadata, var = "sample_id")
+
+# Transposing
+V107_otu = as.data.frame(t(V107_otu))
+E975_otu = as.data.frame(t(E975_otu))
+
+```
+
+
+```{r}
+
+# Testing/Checking data size
+all(colnames(V107_otu) %in% rownames(V107_metadata))
+all(rownames(V107_metadata) %in% colnames(V107_otu))
+
+all(colnames(E975_otu) %in% rownames(E975_metadata))
+all(rownames(E975_metadata) %in% colnames(E975_otu))
+
+args(Maaslin2)
+
+```
+
+Run MaAslin2
+
+``` {r}
+
+run_maaslin2 = function(dataset, metadata){
+
+  result = Maaslin2(
+    
+    input_data = dataset,
+    input_metadata = metadata,
+    output = "maaslin2_outputE975",
+  
+    fixed_effects = c("group", "week"),
+    random_effects = c("pt_identifier"),
+    reference = c("group,NR", "week,day0"),
+    
+    normalization = "NONE",
+    transform = "LOG",
+    min_abundance = 0,
+    min_prevalence = 0,
+    analysis_method = "LM",
+    correction = "BH",
+    standardize = FALSE,
+    max_significance = 0.25,
+    plot_scatter = FALSE,
+    plot_heatmap = FALSE
+    
+  )
+
+  return(result)
+  
+}
+```
+
+```{r}
+
+run_maaslin2(E975_otu, E975_metadata)
+
+```
+
+Visualizing MaAsLin2 outputs
+
+``` {r}
+
+# Importing data for plotting
+V107_maaslin2 = read_tsv("maaslin2_outputV107/all_results.tsv")
+E975_maaslin2 = read_tsv("maaslin2_outputE975/all_results.tsv")
+
+```
+
+
+```{r}
+
+# Data handling
+V107_otu = rownames_to_column(V107_otu, var = "taxon_name")
+E975_otu = rownames_to_column(E975_otu, var = "taxon_name")
+
+# Retrieving significant results
+V107_sig_maaslin = V107_maaslin2 %>% filter(qval <= 0.25, metadata == "group")
+E975_sig_maaslin = E975_maaslin2 %>% filter(qval <= 0.25, metadata == "group")
+
+# Getting groups only
+V107_group_maaslin = V107_maaslin2 %>% filter(metadata == "group")
+E975_group_maaslin = E975_maaslin2 %>% filter(metadata == "group")
+
+# Counting totals
+table(sign(V107_sig_maaslin$coef))
+table(sign(E975_sig_maaslin$coef))
+
+```
+
+Plotting
+
+
+```{r}
+
+
+run_volcano_plot = function(maaslin2_dataset){
+
+  p_volcano = ggplot(maaslin2_dataset, aes(x = coef,
+                                        y = -log10(qval),
+                                        color = qval < 0.05)) +
+    
+    geom_point(alpha = 0.7,
+               size = 2) +
+    
+    # Setting threshold line
+    geom_hline(yintercept = -log10(0.05),
+               linetype = "dashed",
+               color = "black",
+               linewidth = 0.6) +
+    
+    # Setting vertical line at zero
+    geom_vline(xintercept = 0,
+               linetype = "dotted",
+               color = "grey40",
+               linewidth = 0.6) +
+    
+    # Labeling significant features
+    ggrepel::geom_text_repel(
+      data = subset(maaslin2_dataset, qval < 0.05) |> dplyr::slice_min(qval, n = 10),
+      
+      aes(label = feature),
+      size = 3,
+      color = "black",
+      max.overlaps = Inf,
+      box.padding = 0.8,
+      point.padding = 0.6,
+      segment.color = "grey50"
+    ) +
+    
+    
+    labs(
+      title = "Differential Abundance Volcano Plot E975",
+      x = "Effect size (Coefficient)",
+      y = "FDR q-value (-log10)",
+      color = "Significance"
+    ) +
+    
+    
+    theme_minimal(base_size = 16) +
+    theme(
+      
+      # Plot title
+      plot.title = element_text(size = 15, hjust = 0.5), 
+      
+      # Legend settings
+      legend.position = "right",
+      legend.title = element_text(size = 12),
+      legend.text  = element_text(size = 10),
+      legend.key.size = unit(0.2, "cm"),
+      
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      
+      # Panel settings
+      axis.title = element_text(size = 14),
+      axis.text = element_text(color = "black", size = 10),
+      axis.line = element_line(color = "black", linewidth = 0.6)
+    )
+}
+
+
+```
+
+```{r}
+
+E975_volcano_plot = run_volcano_plot(E975_group_maaslin)
+#ggsave("E975_volcano_plot.png", E975_volcano_plot, width = 7, height = 5, dpi = 300)
+E975_volcano_plot
+
+```
+
+Barplot
+
+```{r}
+
+plot_barplot = function(maaslin_dataset){
+
+  # Retrieving top 20 significant taxon 
+  maaslin_top_taxa  = distinct(maaslin_dataset, feature, .keep_all = TRUE)
+  maaslin_top_taxa  = arrange(maaslin_top_taxa , qval)
+  maaslin_top_taxa = mutate(maaslin_top_taxa , direction = ifelse(coef > 0, "R", "NR"))
+  maaslin_top_taxa  = group_by(maaslin_top_taxa , direction)
+  maaslin_top_taxa  = slice_head(maaslin_top_taxa , n = 10)
+  maaslin_top_taxa  = ungroup(maaslin_top_taxa )
+  
+  
+  # Plotting
+  V107_barplot = ggplot(maaslin_top_taxa, 
+                        aes(x = fct_reorder(feature, coef),
+                            y = coef,
+                            fill = direction)) +
+  
+    # Rotate
+    coord_flip() +
+  
+    # Bars setting
+    geom_col(width = 0.7, color = "black") +
+    scale_fill_manual(values = c("R" = "#6baed6",
+                                 "NR" = "#fc9272")) +
+    
+    # 
+    labs(
+      x = "Taxa (Genus)", 
+      y = "Effect size (Coefficient)", 
+      fill = "Group",
+      title = "Top 10 Positive & Negative Differentially Abundant Taxa E975"
+    ) +
+
+  
+    # Setting theme
+    theme_minimal(base_size = 16) +
+    
+    theme(
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_line(colour = scales::alpha("grey60", 0.2), linewidth = 0.5),
+  
+      # Setting axis
+      axis.title = element_text(size = 14),
+      axis.text = element_text(color = "black", size = 10),
+      axis.line = element_line(color = "black", linewidth = 0.6),
+      
+      # Setting title
+      plot.title = element_text(size = 12, hjust = 0.5),
+  
+      # Setting legend
+      legend.position = "right",
+      legend.title = element_text(size = 12),
+      legend.text  = element_text(size = 10),
+      legend.key.size = unit(0.3, "cm"),
+  
+      # Feature labels on y-axis
+      axis.text.y = element_text(size = 11)
+    )
+}
+
+
+```
+
+Visualizing and saving
+
+
+```{r}
+
+V107_barplot = plot_barplot(V107_sig_maaslin)
+E975_barplot = plot_barplot(E975_sig_maaslin)
+V107_barplot
+E975_barplot
+
+ggsave("V107_barplot.png", V107_barplot, width = 7, height = 5, dpi = 300)
+ggsave("E975_barplot.png", E975_barplot, width = 7, height = 5, dpi = 300)
+
+
+```
+
+
+Heatmap
+
+```{r}
+
+plot_heatmap = function(otu_table, metadata, maaslin_obj, weeks_bool){
+
+  # Retrieving significant OTU
+  sig_feature = unique(maaslin_obj$feature)
+  otu_table_sig = otu_table[, c(sig_feature, "sample_id")]
+  
+  # Joining otu with metadata
+  otu_meta = otu_table_sig %>% inner_join(metadata, by = "sample_id")
+  
+  # Creating taxa matrix
+  otu_matrix = otu_meta %>% column_to_rownames("sample_id") %>% select(-group, -week, -pt_identifier)
+  otu_matrix = t(as.matrix(otu_matrix))
+  
+  # Filter to top 100 taxa
+  top_taxa = head(order(apply(otu_matrix, 1, var), decreasing = TRUE), 100)
+  otu_matrix_top = otu_matrix[top_taxa, ]
+  
+  # Setting annotations
+  anno_col = metadata %>% distinct(sample_id, group, week) %>% column_to_rownames("sample_id")
+  
+  # Arranging by weeks
+  if (weeks_bool == 1){
+    metadata = metadata %>% mutate(week = factor(week, levels = paste0("week", c(0, 1, 2, 3, 4, 5, 6))))
+  }
+  
+  else{
+    metadata = metadata %>% mutate(week = factor(week, levels = paste0("day", c(0, 4, 8, 12))))
+    
+  }
+  
+  sample_order = metadata %>% arrange(week, sample_id) %>% pull(sample_id)
+  
+  otu_matrix_top = otu_matrix_top[, sample_order, drop = FALSE]
+  anno_col = anno_col[sample_order, , drop = FALSE]
+  
+  # Setting colours of annotation
+  if (weeks_bool == 1){
+    anno_colours = list(
+      group = c(R = "#6baed6", NR = "#fc9272"),
+      week  = setNames(RColorBrewer::brewer.pal(7, "Reds"), paste0("week", c(0, 1, 2, 3, 4, 5, 6))) 
+    )
+  }
+  else{
+    anno_colours = list(
+      group = c(R = "#6baed6", NR = "#fc9272"),
+      week  = setNames(RColorBrewer::brewer.pal(4, "Reds"), paste0("day", c(0, 4, 8, 12)))
+    )
+  }
+  
+  
+  # Plotting heatmap
+  png("V107_heatmap_final.png", width = 2600, height = 2600, res = 300)
+  pheatmap(
+    otu_matrix_top,
+    annotation_col = anno_col,
+    annotation_colors = anno_colours,
+    scale = "row",
+    cluster_cols = FALSE,
+    border_color = NA,
+    clustering_method = "complete",
+    clustering_distance_rows = "euclidean",
+    show_colnames = TRUE,
+    fontsize_row = 6,
+    fontsize_col = 3,
+    angle_col = 45,
+    main = "Heatmap of Top 100 Taxa By Variance Across Samples V107",
+  )
+
+}
+```
+
+
+```{r}
+
+plot_heatmap(V107_otu, V107_metadata, V107_sig_maaslin, 1)
+plot_heatmap(E975_otu, E975_metadata, E975_sig_maaslin, 0)
+
+
+```
+
+
+
+
+
+
+

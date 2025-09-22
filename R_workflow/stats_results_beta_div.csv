@@ -1,0 +1,7 @@
+"flowcell_id","calculation","permanova_p_value","permadisp_p_value"
+"V107","Bray Curtis","0.001","0.005"
+"E975","Bray Curtis","0.004","0.221"
+"V107","Jaccard","0.001","0.003"
+"E975","Jaccard","0.001","0.406"
+"V107","Aitchison","0.001","0.688"
+"E975","Aitchison","0.001","0.301"

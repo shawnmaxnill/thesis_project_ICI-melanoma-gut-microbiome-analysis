@@ -1,0 +1,384 @@
+---
+title: "beta_analysis_statisticalTest"
+output: html_document
+---
+
+```{r}
+# Imports
+library(vegan)
+library(tibble)
+library(ggplot2)
+
+options(digits = 10)
+
+```
+
+
+Importing data
+
+```{r}
+# Imports for each test
+V107_brayCurtis = read.csv("data/V107_bray_curtis.csv", row.names = 1, check.names = FALSE)
+E975_brayCurtis = read.csv("data/E975_bray_curtis.csv", row.names = 1, check.names = FALSE)
+
+V107_jaccard = read.csv("data/V107_jaccard.csv", row.names = 1, check.names = FALSE)
+E975_jaccard = read.csv("data/E975_jaccard.csv", row.names = 1, check.names = FALSE)
+
+V107_aitchison = read.csv("data/V107_aitchison.csv", row.names = 1, check.names = FALSE)
+E975_aitchison = read.csv("data/E975_aitchison.csv", row.names = 1, check.names = FALSE)
+
+# Importing metadata
+V107_metadata = read.csv("data/V107_metadata.csv", row.names = 1, check.names = FALSE)
+E975_metadata = read.csv("data/E975_metadata.csv", row.names = 1, check.names = FALSE)
+
+```
+
+Imported data handling
+
+```{r}
+
+V107_metadata = rownames_to_column(V107_metadata, var = "sample_id")
+E975_metadata = rownames_to_column(E975_metadata, var = "sample_id")
+
+```
+
+Converting them to matrix
+
+```{r}
+# Convert for each matrix
+V107_bc_mat = as.dist(as.matrix(V107_brayCurtis))
+E975_bc_mat = as.dist(as.matrix(E975_brayCurtis))
+
+V107_ja_mat = as.dist(as.matrix(V107_jaccard))
+E975_ja_mat = as.dist(as.matrix(E975_jaccard))
+
+V107_ai_mat = as.dist(as.matrix(V107_aitchison))
+E975_ai_mat = as.dist(as.matrix(E975_aitchison))
+
+
+```
+
+Performing statistical test
+PERMANOVA and PERMDISP
+
+```{r}
+
+run_stats_test = function(matrix, metadata, flowcell_name, distance_cal_name){
+  
+  set.seed(42)
+  
+  # PERMANOVA calculation
+  permanova_res = adonis2(matrix ~ group * week, data = metadata, strata = metadata$pt_identifier, permutations = 9999)
+  
+  # PERMADISP calculation
+  beta_disp = betadisper(matrix, metadata$group)
+  permadisp = permutest(beta_disp, permutations = 9999)
+  
+  # Store results in a dataframe
+  # PERMANOVA results
+  permanova_p = as.numeric(permanova_res$`Pr(>F)`[1])
+  
+  # PERMADISP results
+  permadisp_p = as.numeric(permadisp$tab[1,"Pr(>F)"])
+  
+  # Building result dataframe
+  result_dataframe = data.frame(
+    
+    flowcell_id = flowcell_name,
+    calculation = distance_cal_name,
+    permanova_p_value = permanova_p,
+    permadisp_p_value = permadisp_p
+    
+  )
+  
+  return(result_dataframe)
+  
+}
+
+# Run tests
+V107_stats_bc = run_stats_test(V107_bc_mat, V107_metadata, "V107", "Bray Curtis")
+V107_stats_ja = run_stats_test(V107_ja_mat, V107_metadata, "V107", "Jaccard")
+V107_stats_ai = run_stats_test(V107_ai_mat, V107_metadata, "V107", "Aitchison")
+
+E975_stats_bc = run_stats_test(E975_bc_mat, E975_metadata, "E975", "Bray Curtis")
+E975_stats_ja = run_stats_test(E975_ja_mat, E975_metadata, "E975", "Jaccard")
+E975_stats_ai = run_stats_test(E975_ai_mat, E975_metadata, "E975", "Aitchison")
+
+```
+
+Statistical Results
+
+```{r}
+
+main_result = rbind(V107_stats_bc, E975_stats_bc, V107_stats_ja, E975_stats_ja, V107_stats_ai, E975_stats_ai)
+
+main_result
+
+```
+
+Performing PcoA plot
+
+``` {r}
+
+# Function to run PcoA plot
+run_pcoa = function(mat){
+  
+  # PcoA calculation
+  pcoa_result = cmdscale(mat, eig = TRUE, k = 2)
+  
+  return(pcoa_result)
+}
+
+# Function to store as dataframe
+store_dataframe = function(pcoa_result){
+  
+  # Store into dataframe
+  pcoa_df = as.data.frame(pcoa_result$points)
+  colnames(pcoa_df) = c("PCoA1_point1", "PCoA2_point2")
+  
+  return(pcoa_df)
+  
+}
+
+# Function to calculate explained variance
+calculate_var = function(df) {
+  
+  # Retrieve eigenvalues
+  eigen_vals = df$eig
+  
+  # Extracting positives
+  eigen_vals = eigen_vals[eigen_vals > 0]
+  
+  # Calculating explained variables
+  result_var = eigen_vals / sum(eigen_vals) * 100
+  
+  result_var = round(result_var[1:2], 2)
+  
+  return(result_var)
+  
+}
+
+# Running PcoA
+v107_bc_pcoa = run_pcoa(V107_bc_mat)
+E975_bc_pcoa = run_pcoa(E975_bc_mat)
+
+v107_ja_pcoa = run_pcoa(V107_ja_mat)
+E975_ja_pcoa = run_pcoa(E975_ja_mat)
+
+v107_ai_pcoa = run_pcoa(V107_ai_mat)
+E975_ai_pcoa = run_pcoa(E975_ai_mat)
+
+
+# Storing result in df
+v107_bc_pcoa_df = store_dataframe(v107_bc_pcoa)
+E975_bc_pcoa_df = store_dataframe(E975_bc_pcoa)
+
+v107_ja_pcoa_df = store_dataframe(v107_ja_pcoa)
+E975_ja_pcoa_df = store_dataframe(E975_ja_pcoa)
+
+v107_ai_pcoa_df = store_dataframe(v107_ai_pcoa)
+E975_ai_pcoa_df = store_dataframe(E975_ai_pcoa)
+
+
+# Calculating explained variance
+V107_bc_var = calculate_var(v107_bc_pcoa)
+E975_bc_var = calculate_var(E975_bc_pcoa)
+
+V107_ja_var = calculate_var(v107_ja_pcoa)
+E975_ja_var = calculate_var(E975_ja_pcoa)
+
+V107_ai_var = calculate_var(v107_ai_pcoa)
+E975_ai_var = calculate_var(E975_ai_pcoa)
+
+E975_bc_pcoa_df
+
+```
+
+Merging dataset
+
+```{r}
+
+merge_dataset = function(pcoa_df, metadata){
+  
+  # Convert rownames to columns
+  pcoa_df$sample_id = rownames(pcoa_df)
+  
+  # Merge into metadata
+  result_df = merge(pcoa_df, metadata, by = "sample_id")
+  
+  return(result_df)
+}
+
+# Apply to all
+V107_bc_main = merge_dataset(v107_bc_pcoa_df, V107_metadata)
+E975_bc_main = merge_dataset(E975_bc_pcoa_df, E975_metadata)
+
+V107_ja_main = merge_dataset(v107_ja_pcoa_df, V107_metadata)
+E975_ja_main = merge_dataset(E975_ja_pcoa_df, E975_metadata)
+
+V107_ai_main = merge_dataset(v107_ai_pcoa_df, V107_metadata)
+E975_ai_main = merge_dataset(E975_ai_pcoa_df, E975_metadata)
+
+```
+
+
+Plotting
+
+```{r}
+
+plot_V107 = function(dataset, var_explained){
+  
+  # Plotting
+  ggplot(dataset, aes(x = PCoA1_point1,
+                           y = PCoA2_point2,
+                           color = group,
+                           shape = week)) +
+    
+    # Drawing sample points
+    geom_point(size = 3.5, alpha = 0.8) +
+    
+    # Increase legend shapes
+    scale_shape_manual(values = c(0, 1, 2, 3, 4, 5, 6), 
+                       labels = c("Week 0", "Week 1", "Week 2", "Week 3",
+                                  "Week 4", "Week 5", "Week 6")) +
+    
+    # Drawing boundary
+    stat_ellipse(aes(group = group, color = group),
+                 linetype = 2, linewidth = 0.8) +
+    
+    # Legend Settings
+    scale_color_manual(
+      values = c("R" = "#66c2a5", "NR" = "#fc8d62"),
+      labels = c("R" = "Responder", "NR" = "Non-Responder")) +
+    
+    
+    # Setting theme
+    theme_classic(base_size = 16) +
+    
+    # Theme detailed settings
+    theme(
+      
+      # Legend
+      legend.position = "right",
+      legend.title = element_text(size = 11),
+      legend.text  = element_text(size = 10),
+      legend.key.size = unit(0.6, "cm"),
+      
+      # Plot
+      plot.title = element_text(size = 12, hjust = 0.5),
+      
+      # Axis
+      axis.title = element_text(size = 11),
+      axis.text = element_text(color = "black"),
+      axis.ticks = element_line(color = "black"),
+      axis.ticks.length = unit(0.2, "cm"),
+      
+      # Panel
+      panel.grid = element_blank(),
+      panel.background = element_rect(fill = "gray95", color = NA)) +
+    
+    # Setting custom labels
+    labs(
+      x = paste0("PCoA1 (", round(var_explained[1], 1), "%)"),
+      y = paste0("PCoA2 (", round(var_explained[2], 1), "%)"),
+      color = "Response Group",
+      shape = "Week",
+      title = "Beta Diversity (Aitchison PCoA)")
+
+}
+
+```
+
+
+``` {r}
+
+plotted = plot_V107(V107_ai_main, V107_ai_var)
+ggsave("V107_ai.png", plot = plotted, width = 6, height = 5, dpi = 300)
+plotted
+
+```
+
+
+For E975
+
+```{r}
+
+
+# Plotting
+plot_E975 = function(dataset, var_explained){
+  
+    ggplot(dataset, aes(x = PCoA1_point1,
+                             y = PCoA2_point2,
+                             color = group,
+                             shape = week)) +
+      
+      # Drawing sample points
+      geom_point(size = 3.5, alpha = 0.8) +
+      
+      # Increase legend shapes and modifying labels
+      scale_shape_manual(values = c(0, 1, 2, 3), 
+                         labels = c("Day 0", "Day 4", "Day 8", "Day 12")) +
+      
+      # Drawing boundary
+      stat_ellipse(aes(group = group, color = group),
+                   linetype = 2, linewidth = 0.8) +
+      
+      # Legend Settings
+      scale_color_manual(
+        values = c("R" = "#66c2a5", "NR" = "#fc8d62"),
+        labels = c("R" = "Responder", "NR" = "Non-Responder")) +
+      
+      
+      # Setting theme
+      theme_classic(base_size = 16) +
+      
+      # Theme detailed settings
+      theme(
+        
+        # Legend
+        legend.position = "right",
+        legend.title = element_text(size = 11),
+        legend.text  = element_text(size = 10),
+        legend.key.size = unit(0.6, "cm"),
+        
+        # Plot
+        plot.title = element_text(size = 12, hjust = 0.5),
+        
+        # Axis
+        axis.title = element_text(size = 11),
+        axis.text = element_text(color = "black"),
+        axis.ticks = element_line(color = "black"),
+        axis.ticks.length = unit(0.2, "cm"),
+        
+        # Panel
+        panel.grid = element_blank(),
+        panel.background = element_rect(fill = "gray95", color = NA)) +
+      
+      # Setting custom labels
+      labs(
+        x = paste0("PCoA1 (", round(var_explained[1], 1), "%)"),
+        y = paste0("PCoA2 (", round(var_explained[2], 1), "%)"),
+        color = "Response Group",
+        shape = "Week",
+        title = "Beta Diversity (Aitchison PCoA)")
+}
+
+```
+
+```{r}
+
+plotted1 = plot_E975(E975_ai_main, E975_ai_var)
+ggsave("E975_ai.png", plot = plotted1, width = 6, height = 5, dpi = 300)
+plotted1
+
+
+```
+
+
+
+
+
+
+
+
+
