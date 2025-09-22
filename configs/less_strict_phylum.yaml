@@ -1,0 +1,4 @@
+taxa_class: p
+level_filter: phylum
+prevalence_threshold: 0.001
+abundance_proportion: 0.005

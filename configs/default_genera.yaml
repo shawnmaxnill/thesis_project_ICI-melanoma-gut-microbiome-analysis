@@ -1,0 +1,4 @@
+taxa_class: g
+level_filter: genus
+prevalence_threshold: 0.005
+abundance_proportion: 0.005
